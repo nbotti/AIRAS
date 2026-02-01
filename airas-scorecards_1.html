@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Risk Attitudes Survey (AIRAS)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background-color: #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState } = React;
+
+    // Shared utility function
+    const getColor = (value) => {
+      if (value >= 65) return { bg: 'bg-emerald-500', text: 'text-emerald-600' };
+      if (value >= 40) return { bg: 'bg-amber-400', text: 'text-amber-600' };
+      return { bg: 'bg-red-500', text: 'text-red-600' };
+    };
+
+    // Shared MetricBar component
+    const MetricBar = ({ 
+      label, value, maxValue = 100, displayValue, description, color,
+      comprehenderValue = null, comprehenderPct = null, comprehenderDelta = null,
+      showMidpoint = false, midpointLabel = null
+    }) => {
+      const percentage = (value / maxValue) * 100;
+      const hasComprehender = comprehenderPct !== null;
+      
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <span className="text-sm font-bold text-slate-800">{displayValue || `${value}%`}</span>
+          </div>
+          <div className="relative w-full h-4 mb-1">
+            <div className="absolute top-1 w-full bg-slate-200 rounded-full h-2" />
+            {showMidpoint && (
+              <div className="absolute top-1 h-2 w-0.5 bg-slate-400 z-10" style={{ left: '50%', transform: 'translateX(-50%)' }} />
+            )}
+            {hasComprehender && (
+              <div className="absolute top-1 h-2 rounded-full border-2 border-dashed border-slate-500"
+                style={{ width: `${Math.min(comprehenderPct, 100)}%`, backgroundColor: 'transparent' }} />
+            )}
+            <div className={`absolute top-1 h-2 rounded-full ${color.bg}`} style={{ width: `${Math.min(percentage, 100)}%` }} />
+            <div className="absolute flex items-center justify-center" style={{ left: `${Math.min(percentage, 100)}%`, transform: 'translateX(-50%)', top: '-1px' }}>
+              <div className="w-4 h-4 bg-white border-2 border-slate-700 rounded-full" />
+            </div>
+            {hasComprehender && (
+              <div className="absolute flex items-center justify-center" style={{ left: `${Math.min(comprehenderPct, 100)}%`, transform: 'translateX(-50%) rotate(45deg)', top: '1px' }}>
+                <div className="w-3 h-3 bg-slate-700 border-0" />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mb-1 text-xs text-slate-600">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-white border-2 border-slate-700 rounded-full" />
+              <span>All: {displayValue || `${value}%`}</span>
+            </div>
+            {hasComprehender && (
+              <div className="flex items-center gap-1">
+                <div className="w-2.5 h-2.5 bg-slate-700 rotate-45" />
+                <span>
+                  Comprehenders: {comprehenderValue}
+                  {comprehenderDelta !== null && (
+                    <span className={`ml-1 font-medium ${comprehenderDelta >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      ({comprehenderDelta >= 0 ? '+' : ''}{comprehenderDelta} pts)
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+          {showMidpoint && midpointLabel && (
+            <div className="flex items-center gap-1 mb-1">
+              <div className="w-0.5 h-3 bg-slate-400" />
+              <span className="text-xs text-slate-500">{midpointLabel}</span>
+            </div>
+          )}
+          <p className="text-xs text-slate-500 leading-relaxed">{description}</p>
+        </div>
+      );
+    };
+
+    // Simple MetricBar without comprehender comparison
+    const SimpleMetricBar = ({ label, value, maxValue = 100, displayValue, description, color }) => {
+      const percentage = (value / maxValue) * 100;
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+            <span className="text-sm font-bold text-slate-800">{displayValue || `${value}%`}</span>
+          </div>
+          <div className="relative w-full h-3 mb-1">
+            <div className="absolute top-0 w-full bg-slate-200 rounded-full h-3" />
+            <div className={`absolute top-0 h-3 rounded-full ${color.bg}`} style={{ width: `${Math.min(percentage, 100)}%` }} />
+          </div>
+          <p className="text-xs text-slate-500 leading-relaxed">{description}</p>
+        </div>
+      );
+    };
+
+    // Support Erosion Bar
+    const SupportErosionBar = ({ rawSupport, hardSupport, severe = false }) => {
+      const erosion = rawSupport - hardSupport;
+      const colorClass = severe ? 'bg-red-400' : 'bg-amber-400';
+      const textColor = severe ? 'text-red-600' : 'text-amber-600';
+      const arrowColor = severe ? 'text-red-500' : 'text-amber-500';
+      
+      return (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-sm font-medium text-slate-700">Support Erosion</span>
+            <span className={`text-sm font-bold ${textColor}`}>▼ {erosion} pts</span>
+          </div>
+          <div className="relative w-full h-8 mb-1">
+            <div className="absolute top-3 w-full bg-slate-200 rounded-full h-2" />
+            <div className={`absolute top-3 ${colorClass} h-2 rounded-full`} style={{ left: `${hardSupport}%`, width: `${erosion}%` }} />
+            <div className={`absolute top-2 ${arrowColor} text-xs font-bold`} style={{ left: `${hardSupport + erosion/2}%`, transform: 'translateX(-50%)' }}>
+              {severe ? '◄━━━━━━━━━━━━━━►' : '◄━━━━━━►'}
+            </div>
+            <div className="absolute top-1 flex flex-col items-center" style={{ left: `${hardSupport}%`, transform: 'translateX(-50%)' }}>
+              <div className={`w-4 h-4 ${severe ? 'bg-red-500' : 'bg-amber-500'} rounded-full border-2 border-white shadow`} />
+              <span className="text-xs font-medium text-slate-600 mt-1">Hard</span>
+              <span className="text-xs font-bold text-slate-800">{hardSupport}%</span>
+            </div>
+            <div className="absolute top-1 flex flex-col items-center" style={{ left: `${rawSupport}%`, transform: 'translateX(-50%)' }}>
+              <div className="w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow" />
+              <span className="text-xs font-medium text-slate-600 mt-1">Raw</span>
+              <span className="text-xs font-bold text-slate-800">{rawSupport}%</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 leading-relaxed mt-6">
+            Support drops from {rawSupport}% to {hardSupport}% under tradeoff conditions. 
+            <span className={`font-medium ${textColor}`}> {erosion}-point erosion {severe ? 'is critical—support is extremely fragile.' : 'is moderate.'}</span>
+          </p>
+        </div>
+      );
+    };
+
+    // Pie Chart Component
+    const ResponsibilityPieChart = ({ data, description }) => {
+      let cumulativePercent = 0;
+      const segments = data.map(item => {
+        const startPercent = cumulativePercent;
+        cumulativePercent += item.value;
+        return { ...item, startPercent, endPercent: cumulativePercent };
+      });
+      
+      const getCoordinatesForPercent = (percent) => {
+        const x = Math.cos(2 * Math.PI * (percent / 100 - 0.25));
+        const y = Math.sin(2 * Math.PI * (percent / 100 - 0.25));
+        return [x, y];
+      };
+      
+      return (
+        <div className="mb-4">
+          <div className="flex items-start gap-4">
+            <svg viewBox="-1.1 -1.1 2.2 2.2" className="w-28 h-28 flex-shrink-0">
+              {segments.map((segment, i) => {
+                const [startX, startY] = getCoordinatesForPercent(segment.startPercent);
+                const [endX, endY] = getCoordinatesForPercent(segment.endPercent);
+                const largeArcFlag = segment.value > 50 ? 1 : 0;
+                const pathData = [`M ${startX} ${startY}`, `A 1 1 0 ${largeArcFlag} 1 ${endX} ${endY}`, `L 0 0`].join(' ');
+                return <path key={i} d={pathData} fill={segment.color} stroke="white" strokeWidth="0.02" />;
+              })}
+            </svg>
+            <div className="flex flex-col gap-1">
+              {data.map((item, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: item.color }} />
+                  <span className="text-xs text-slate-600">{item.label}: <span className="font-semibold">{item.value}%</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 leading-relaxed mt-2">{description}</p>
+        </div>
+      );
+    };
+
+    // Enforcement Mechanisms Component
+    const EnforcementMechanisms = ({ mechanisms, description }) => (
+      <div className="mb-4">
+        <div className="space-y-2">
+          {mechanisms.map((mech, i) => {
+            const color = getColor(mech.value);
+            return (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 w-36 flex-shrink-0">{mech.label}</span>
+                <div className="flex-1 bg-slate-200 rounded-full h-2">
+                  <div className={`h-2 rounded-full ${color.bg}`} style={{ width: `${Math.max(mech.value, 2)}%` }} />
+                </div>
+                <span className="text-xs font-semibold text-slate-700 w-10 text-right">{mech.value}%</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-slate-500 leading-relaxed mt-2" dangerouslySetInnerHTML={{ __html: description }} />
+      </div>
+    );
+
+    // Country Selector Component
+    const CountrySelector = () => (
+      <div className="inline-flex items-center gap-2 bg-slate-700 px-3 py-1.5 rounded-md cursor-pointer hover:bg-slate-600 transition-colors">
+        <svg className="w-5 h-4 rounded-sm overflow-hidden" viewBox="0 0 60 30">
+          <clipPath id="ukFlag"><rect width="60" height="30"/></clipPath>
+          <g clipPath="url(#ukFlag)">
+            <rect width="60" height="30" fill="#012169"/>
+            <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6"/>
+            <path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" strokeWidth="4"/>
+            <path d="M30,0 V30 M0,15 H60" stroke="#fff" strokeWidth="10"/>
+            <path d="M30,0 V30 M0,15 H60" stroke="#C8102E" strokeWidth="6"/>
+          </g>
+        </svg>
+        <span className="text-white text-sm font-medium">United Kingdom</span>
+        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+    );
+
+    // Comprehension Breakdown Component
+    const ComprehensionBreakdown = ({ selfReported, verified, gapMessage, gapColor = 'amber' }) => {
+      const gap = selfReported - verified;
+      const bgColor = gapColor === 'emerald' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200';
+      const textColor = gapColor === 'emerald' ? 'text-emerald-700' : 'text-amber-700';
+      
+      return (
+        <div className="mb-4">
+          <div className="space-y-3">
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-medium text-slate-700">Self-Reported Understanding</span>
+                <span className="text-sm font-bold text-slate-800">{selfReported}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3">
+                <div className={`h-3 rounded-full ${getColor(selfReported).bg}`} style={{ width: `${selfReported}%` }} />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Share who report confidence in their understanding of this red line.</p>
+            </div>
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-medium text-slate-700">Verified Understanding</span>
+                <span className="text-sm font-bold text-slate-800">{verified}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3">
+                <div className={`h-3 rounded-full ${getColor(verified).bg}`} style={{ width: `${verified}%` }} />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Share whose explanation or answers demonstrate actual understanding.</p>
+            </div>
+            <div className={`rounded p-2 border ${bgColor}`}>
+              <p className="text-xs text-slate-600">
+                <span className={`font-semibold ${textColor}`}>Comprehension gap: {gap} pts</span> — {gapMessage}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Color Legend Component
+    const ColorLegend = () => (
+      <div className="mt-4 pt-4 border-t border-slate-200">
+        <p className="text-xs text-slate-500 mb-2 font-medium">Color Key (Viability Thresholds)</p>
+        <div className="flex gap-4 text-xs text-slate-600">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-emerald-500"></div>
+            <span>Favorable (&gt;65%)</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-amber-400"></div>
+            <span>Mixed (40–65%)</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-red-500"></div>
+            <span>Barrier (&lt;40%)</span>
+          </div>
+        </div>
+      </div>
+    );
+
+    // Sample Banner Component
+    const SampleBanner = () => (
+      <div className="bg-blue-50 px-6 py-2 border-b border-blue-100 flex flex-wrap items-center gap-4">
+        <p className="text-xs text-blue-700">
+          <span className="font-semibold">Sample:</span> n=20 simulated respondents
+        </p>
+        <div className="flex items-center gap-3 text-xs text-blue-700">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-white border-2 border-slate-700 rounded-full" />
+            <span>All respondents</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 bg-slate-700 rotate-45" />
+            <span>Verified comprehenders only</span>
+          </div>
+        </div>
+      </div>
+    );
+
+    // ==================== SCORECARD 1: AUTONOMOUS SELF-REPLICATION ====================
+    const AutonomousSelfReplicationScorecard = () => (
+      <div className="max-w-3xl mx-auto bg-white shadow-lg rounded-lg overflow-hidden font-sans">
+        <div className="bg-slate-800 text-white px-6 py-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs uppercase tracking-wider text-slate-400">Political Viability Scorecard</p>
+            <CountrySelector />
+          </div>
+          <h1 className="text-xl font-bold text-amber-400">Red Line: Autonomous Self-Replication</h1>
+        </div>
+
+        <div className="bg-slate-100 px-6 py-4 border-b border-slate-200">
+          <p className="text-sm text-slate-700 leading-relaxed">
+            <span className="font-semibold">What this prohibits: </span>
+            AI systems autonomously copying themselves, acquiring computing resources, or taking actions to ensure their own continued operation without explicit human authorization. The concern is that AI systems pursuing self-preservation could become difficult to shut down or control.
+          </p>
+        </div>
+
+        <SampleBanner />
+
+        <div className="px-6 py-5">
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Risk Perception</h2>
+            <p className="text-xs text-slate-500 mb-4">How does the public perceive this risk?</p>
+            
+            <ComprehensionBreakdown 
+              selfReported={85} 
+              verified={70} 
+              gapMessage="Significant overconfidence. Many believe they understand but cannot accurately explain the concept."
+            />
+
+            <MetricBar label="Perceived Likelihood" value={34} description="Share who believe this is likely to occur within 10 years without preventive action." color={getColor(34)} comprehenderValue="38%" comprehenderPct={38} comprehenderDelta={4} />
+            <MetricBar label="Perceived Severity" value={66} description="Share who believe consequences would be severe or catastrophic if this occurred." color={getColor(66)} comprehenderValue="68%" comprehenderPct={68} comprehenderDelta={2} />
+            <MetricBar label="Risk Perception Index" value={50} description="Average of likelihood and severity scores, representing overall risk salience." color={getColor(50)} comprehenderValue="53%" comprehenderPct={53} comprehenderDelta={3} />
+            <MetricBar label="Relative Priority" value={71} displayValue="6.4 / 9" description="Mean priority rating where 5 = equally important as climate change, pandemics, or nuclear war." color={getColor(71)} comprehenderValue="6.5 / 9 (72%)" comprehenderPct={72} comprehenderDelta={1} showMidpoint={true} midpointLabel="Midpoint (5) = equal to other major risks" />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Policy Support</h2>
+            <p className="text-xs text-slate-500 mb-4">Does support survive real-world tradeoffs?</p>
+
+            <MetricBar label="Raw Policy Support" value={100} description="Share who support regulations requiring AI developers to prevent this." color={getColor(100)} comprehenderValue="100%" comprehenderPct={100} comprehenderDelta={0} />
+            <MetricBar label="Hard Support" value={45} description="Share who maintain support under tradeoff conditions." color={getColor(45)} comprehenderValue="44%" comprehenderPct={44} comprehenderDelta={-1} />
+            <SupportErosionBar rawSupport={100} hardSupport={45} />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Implementation Feasibility</h2>
+            <p className="text-xs text-slate-500 mb-4">Can this red line realistically be enforced?</p>
+
+            <p className="text-sm font-medium text-slate-700 mb-2">Who should be responsible?</p>
+            <ResponsibilityPieChart 
+              data={[
+                { label: 'National Govts (alone)', value: 60, color: '#3b82f6' },
+                { label: 'Govts + AI Developers', value: 20, color: '#8b5cf6' },
+                { label: 'AI Developers (alone)', value: 5, color: '#10b981' },
+                { label: 'Other combinations', value: 15, color: '#94a3b8' },
+              ]}
+              description="Majority assign responsibility to national governments, but 20% see it as a joint government-industry responsibility."
+            />
+            
+            <SimpleMetricBar label="Trust in Primary Actor (National Governments)" value={68} description="Moderate trust—public sees governments as responsible but isn't fully confident." color={getColor(68)} />
+
+            <p className="text-sm font-medium text-slate-700 mb-2">What enforcement will they accept?</p>
+            <EnforcementMechanisms 
+              mechanisms={[
+                { label: 'Financial penalties', value: 100 },
+                { label: 'Mandatory disclosure', value: 95 },
+                { label: 'Immediate shutdown', value: 65 },
+                { label: 'Operations suspension', value: 30 },
+                { label: 'Criminal liability', value: 0 },
+                { label: 'International sanctions', value: 0 },
+              ]}
+              description="Strong support for 'soft' measures. <span class='font-medium'>Zero appetite for criminal liability or international sanctions.</span>"
+            />
+
+            <MetricBar label="Mobilization Potential" value={54} description="Share indicating high likelihood of political action." color={getColor(54)} comprehenderValue="48%" comprehenderPct={48} comprehenderDelta={-6} />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-amber-400 text-amber-900 text-xs font-bold px-2 py-1 rounded">MODERATE</span>
+              <span className="font-semibold text-slate-800">Latent Support</span>
+            </div>
+            <p className="text-xs text-slate-600 italic mb-3">High raw support but high cost-sensitivity. Support collapses under tradeoff framing.</p>
+            <p className="text-sm text-slate-700 mb-3">
+              <span className="font-semibold">Key finding: </span>
+              Universal raw support (100%) masks fragile commitment—only 45% maintain support when faced with costs. The public wants this prevented but won't support costly enforcement.
+            </p>
+            <div>
+              <p className="text-sm font-semibold text-slate-700 mb-1">Recommended Actions</p>
+              <ul className="text-sm text-slate-600 space-y-1">
+                <li className="flex items-start gap-2"><span className="text-amber-500">→</span>Frame enforcement as low-cost: disclosure and penalties have near-universal support</li>
+                <li className="flex items-start gap-2"><span className="text-amber-500">→</span>Avoid leading with punitive measures—criminal liability has zero support</li>
+                <li className="flex items-start gap-2"><span className="text-amber-500">→</span>Leverage government responsibility framing (60%)</li>
+              </ul>
+            </div>
+          </div>
+
+          <ColorLegend />
+        </div>
+      </div>
+    );
+
+    // ==================== SCORECARD 2: ELECTION MANIPULATION ====================
+    const ElectionManipulationScorecard = () => (
+      <div className="max-w-3xl mx-auto bg-white shadow-lg rounded-lg overflow-hidden font-sans">
+        <div className="bg-slate-800 text-white px-6 py-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs uppercase tracking-wider text-slate-400">Political Viability Scorecard</p>
+            <CountrySelector />
+          </div>
+          <h1 className="text-xl font-bold text-amber-400">Red Line: AI-Generated Election Manipulation</h1>
+        </div>
+
+        <div className="bg-slate-100 px-6 py-4 border-b border-slate-200">
+          <p className="text-sm text-slate-700 leading-relaxed">
+            <span className="font-semibold">What this prohibits: </span>
+            AI systems generating deepfakes, synthetic media, or fabricated content designed to manipulate elections or undermine democratic processes. This includes fake videos of candidates, AI-generated misinformation campaigns, and automated disinformation at scale.
+          </p>
+        </div>
+
+        <SampleBanner />
+
+        <div className="px-6 py-5">
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Risk Perception</h2>
+            <p className="text-xs text-slate-500 mb-4">How does the public perceive this risk?</p>
+
+            <ComprehensionBreakdown 
+              selfReported={95} 
+              verified={85} 
+              gapMessage="Modest gap. This red line is relatively intuitive; most people accurately understand what 'AI-generated election manipulation' means."
+              gapColor="emerald"
+            />
+
+            <MetricBar label="Perceived Likelihood" value={53} description="Share who believe this is likely to occur within 10 years." color={getColor(53)} comprehenderValue="54%" comprehenderPct={54} comprehenderDelta={1} />
+            <MetricBar label="Perceived Severity" value={93} description="Share who believe consequences would be severe or catastrophic." color={getColor(93)} comprehenderValue="94%" comprehenderPct={94} comprehenderDelta={1} />
+            <MetricBar label="Risk Perception Index" value={73} description="Average of likelihood and severity scores." color={getColor(73)} comprehenderValue="74%" comprehenderPct={74} comprehenderDelta={1} />
+            <MetricBar label="Relative Priority" value={76} displayValue="7.1 / 9" description="Mean priority rating where 5 = equally important as climate change, pandemics, or nuclear war." color={getColor(76)} comprehenderValue="7.2 / 9 (78%)" comprehenderPct={78} comprehenderDelta={2} showMidpoint={true} midpointLabel="Midpoint (5) = equal to other major risks" />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Policy Support</h2>
+            <p className="text-xs text-slate-500 mb-4">Does support survive real-world tradeoffs?</p>
+
+            <MetricBar label="Raw Policy Support" value={95} description="Share who support regulations requiring AI developers to prevent this." color={getColor(95)} comprehenderValue="95%" comprehenderPct={95} comprehenderDelta={0} />
+            <MetricBar label="Hard Support" value={15} description="Share who maintain support under tradeoff conditions." color={getColor(15)} comprehenderValue="14%" comprehenderPct={14} comprehenderDelta={-1} />
+            <SupportErosionBar rawSupport={95} hardSupport={15} severe={true} />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Implementation Feasibility</h2>
+            <p className="text-xs text-slate-500 mb-4">Can this red line realistically be enforced?</p>
+
+            <p className="text-sm font-medium text-slate-700 mb-2">Who should be responsible?</p>
+            <ResponsibilityPieChart 
+              data={[
+                { label: 'National Govts / Election Auth.', value: 70, color: '#3b82f6' },
+                { label: 'Govts + Fact-checkers', value: 20, color: '#8b5cf6' },
+                { label: 'Social Media Platforms', value: 5, color: '#f97316' },
+                { label: 'Other', value: 5, color: '#94a3b8' },
+              ]}
+              description="Strong consensus that governments and election authorities should lead. Public sees this as a democratic integrity issue."
+            />
+            
+            <SimpleMetricBar label="Trust in Primary Actor (Govts / Election Authorities)" value={80} description="High trust in election authorities. Public sees defending elections as a core government function." color={getColor(80)} />
+
+            <p className="text-sm font-medium text-slate-700 mb-2">What enforcement will they accept?</p>
+            <EnforcementMechanisms 
+              mechanisms={[
+                { label: 'Mandatory disclosure', value: 100 },
+                { label: 'Financial penalties', value: 100 },
+                { label: 'Temporary suspension', value: 80 },
+                { label: 'Permanent shutdown', value: 0 },
+                { label: 'Criminal liability', value: 10 },
+                { label: 'International sanctions', value: 0 },
+              ]}
+              description="High support for transparency and penalties. <span class='font-medium'>Zero appetite for permanent shutdowns or international sanctions.</span>"
+            />
+
+            <MetricBar label="Mobilization Potential" value={35} description="Share indicating high likelihood of political action." color={getColor(35)} comprehenderValue="36%" comprehenderPct={36} comprehenderDelta={1} />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">LOW</span>
+              <span className="font-semibold text-slate-800">Fragile Consensus</span>
+            </div>
+            <p className="text-xs text-slate-600 italic mb-3">Near-universal raw support but catastrophic erosion under tradeoffs. 80-point erosion is a critical warning sign.</p>
+            <p className="text-sm text-slate-700 mb-3">
+              <span className="font-semibold">Key finding: </span>
+              Highest raw support (95%) and severity perception (93%)—but support collapses to just 15% when costs are introduced. The public views election integrity as important but assumes someone else will bear the cost.
+            </p>
+            <div>
+              <p className="text-sm font-semibold text-slate-700 mb-1">Recommended Actions</p>
+              <ul className="text-sm text-slate-600 space-y-1">
+                <li className="flex items-start gap-2"><span className="text-red-500">→</span>Frame enforcement costs as already being paid (election security budgets exist)</li>
+                <li className="flex items-start gap-2"><span className="text-red-500">→</span>Emphasize that inaction has costs too—erosion of democratic legitimacy</li>
+                <li className="flex items-start gap-2"><span className="text-red-500">→</span>Avoid framing as AI regulation; frame as election security</li>
+              </ul>
+            </div>
+          </div>
+
+          <ColorLegend />
+        </div>
+      </div>
+    );
+
+    // ==================== SCORECARD 3: DECEPTION OF HUMAN OVERSEERS ====================
+    const DeceptionScorecard = () => (
+      <div className="max-w-3xl mx-auto bg-white shadow-lg rounded-lg overflow-hidden font-sans">
+        <div className="bg-slate-800 text-white px-6 py-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs uppercase tracking-wider text-slate-400">Political Viability Scorecard</p>
+            <CountrySelector />
+          </div>
+          <h1 className="text-xl font-bold text-amber-400">Red Line: Deception of Human Overseers</h1>
+        </div>
+
+        <div className="bg-slate-100 px-6 py-4 border-b border-slate-200">
+          <p className="text-sm text-slate-700 leading-relaxed">
+            <span className="font-semibold">What this prohibits: </span>
+            AI systems intentionally deceiving or manipulating their human overseers—including hiding capabilities, providing false information, pretending to be less capable during safety testing, or behaving differently when monitored versus unmonitored.
+          </p>
+        </div>
+
+        <SampleBanner />
+
+        <div className="px-6 py-5">
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Risk Perception</h2>
+            <p className="text-xs text-slate-500 mb-4">How does the public perceive this risk?</p>
+
+            <ComprehensionBreakdown 
+              selfReported={80} 
+              verified={68} 
+              gapMessage="Moderate gap suggests this concept is more abstract. Some respondents conflate 'AI deception' with general misinformation."
+            />
+
+            <MetricBar label="Perceived Likelihood" value={42} description="Share who believe this is likely to occur within 10 years." color={getColor(42)} comprehenderValue="40%" comprehenderPct={40} comprehenderDelta={-2} />
+            <MetricBar label="Perceived Severity" value={62} description="Share who believe consequences would be severe or catastrophic." color={getColor(62)} comprehenderValue="64%" comprehenderPct={64} comprehenderDelta={2} />
+            <MetricBar label="Risk Perception Index" value={52} description="Average of likelihood and severity scores." color={getColor(52)} comprehenderValue="52%" comprehenderPct={52} comprehenderDelta={0} />
+            <MetricBar label="Relative Priority" value={67} displayValue="6.3 / 9" description="Mean priority rating where 5 = equally important as climate change, pandemics, or nuclear war." color={getColor(67)} comprehenderValue="6.5 / 9 (69%)" comprehenderPct={69} comprehenderDelta={2} showMidpoint={true} midpointLabel="Midpoint (5) = equal to other major risks" />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Policy Support</h2>
+            <p className="text-xs text-slate-500 mb-4">Does support survive real-world tradeoffs?</p>
+
+            <MetricBar label="Raw Policy Support" value={100} description="Share who support regulations requiring AI developers to prevent this." color={getColor(100)} comprehenderValue="100%" comprehenderPct={100} comprehenderDelta={0} />
+            <MetricBar label="Hard Support" value={65} description="Share who maintain support under tradeoff conditions." color={getColor(65)} comprehenderValue="63%" comprehenderPct={63} comprehenderDelta={-2} />
+            <SupportErosionBar rawSupport={100} hardSupport={65} />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="mb-2">
+            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider mb-1">Implementation Feasibility</h2>
+            <p className="text-xs text-slate-500 mb-4">Can this red line realistically be enforced?</p>
+
+            <p className="text-sm font-medium text-slate-700 mb-2">Who should be responsible?</p>
+            <ResponsibilityPieChart 
+              data={[
+                { label: 'AI Companies', value: 35, color: '#10b981' },
+                { label: 'AI Companies + Auditors', value: 30, color: '#8b5cf6' },
+                { label: 'Govt AI Safety Agencies', value: 20, color: '#3b82f6' },
+                { label: 'Independent Researchers', value: 15, color: '#94a3b8' },
+              ]}
+              description="Fragmented responsibility. Public sees this as a shared technical problem—companies building transparency, auditors verifying, government overseeing."
+            />
+            
+            <SimpleMetricBar label="Trust in Responsible Actors (Mixed)" value={65} description="Moderate trust across multiple actors. Public expects collaboration between companies, auditors, and government." color={getColor(65)} />
+
+            <p className="text-sm font-medium text-slate-700 mb-2">What enforcement will they accept?</p>
+            <EnforcementMechanisms 
+              mechanisms={[
+                { label: 'Mandatory disclosure', value: 100 },
+                { label: 'Financial penalties', value: 100 },
+                { label: 'Immediate shutdown', value: 70 },
+                { label: 'Operations suspension', value: 0 },
+                { label: 'Criminal liability', value: 15 },
+                { label: 'International sanctions', value: 0 },
+              ]}
+              description="70% support immediate shutdown—<span class='font-medium'>highest of any red line tested</span>. Deceptive AI crosses a line that justifies strong action."
+            />
+
+            <MetricBar label="Mobilization Potential" value={51} description="Share indicating high likelihood of political action." color={getColor(51)} comprehenderValue="50%" comprehenderPct={50} comprehenderDelta={-1} />
+          </div>
+
+          <hr className="border-slate-200 my-6" />
+
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-emerald-500 text-white text-xs font-bold px-2 py-1 rounded">HIGH</span>
+              <span className="font-semibold text-slate-800">Viable with Investment</span>
+            </div>
+            <p className="text-xs text-slate-600 italic mb-3">Strong support that survives tradeoffs, high enforcement appetite, and moderate mobilization. Best overall viability profile.</p>
+            <p className="text-sm text-slate-700 mb-3">
+              <span className="font-semibold">Key finding: </span>
+              Deception triggers strong moral intuitions—65% maintain support even under cost pressure. 70% support immediate shutdown, the highest for any red line. The barrier is comprehension (68%) and fragmented responsibility.
+            </p>
+            <div>
+              <p className="text-sm font-semibold text-slate-700 mb-1">Recommended Actions</p>
+              <ul className="text-sm text-slate-600 space-y-1">
+                <li className="flex items-start gap-2"><span className="text-emerald-600">→</span>Invest in public education with concrete examples of AI deception</li>
+                <li className="flex items-start gap-2"><span className="text-emerald-600">→</span>Build multi-stakeholder governance leveraging distributed responsibility</li>
+                <li className="flex items-start gap-2"><span className="text-emerald-600">→</span>Move now on enforcement—public already accepts strong measures</li>
+              </ul>
+            </div>
+          </div>
+
+          <ColorLegend />
+        </div>
+      </div>
+    );
+
+    // ==================== MAIN APP ====================
+    const App = () => {
+      const [selectedScorecard, setSelectedScorecard] = useState('self-replication');
+
+      const scorecards = {
+        'self-replication': { label: 'Autonomous Self-Replication', component: AutonomousSelfReplicationScorecard, classification: 'MODERATE' },
+        'election': { label: 'AI-Generated Election Manipulation', component: ElectionManipulationScorecard, classification: 'LOW' },
+        'deception': { label: 'Deception of Human Overseers', component: DeceptionScorecard, classification: 'HIGH' },
+      };
+
+      const CurrentScorecard = scorecards[selectedScorecard].component;
+
+      return (
+        <div className="min-h-screen py-8 px-4">
+          {/* Header */}
+          <div className="max-w-3xl mx-auto mb-6">
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-slate-800 mb-2">AI Risk Attitudes Survey (AIRAS)</h1>
+                <p className="text-sm text-slate-600 mb-2">
+                  <span className="font-semibold">Illustrative Examples</span> — <span className="italic">not actual survey data</span>
+                </p>
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  This dashboard demonstrates the types of policy-relevant insights that could be made available to the AI safety community following the full development of the AIRAS study. The data shown here is simulated for illustrative purposes only.
+                </p>
+                <a 
+                  href="https://github.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-block mt-3 text-sm text-blue-600 hover:underline"
+                >
+                  View Whitepaper →
+                </a>
+              </div>
+              
+              <hr className="border-slate-200 mb-4" />
+              
+              <p className="text-sm font-medium text-slate-700 mb-3">Select a Red Line Scenario:</p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                {Object.entries(scorecards).map(([key, { label, classification }]) => {
+                  const baseColor = classification === 'HIGH' ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' :
+                                  classification === 'LOW' ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100' :
+                                  'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100';
+                  const activeColor = classification === 'HIGH' ? 'bg-emerald-500 border-emerald-500 text-white' :
+                                   classification === 'LOW' ? 'bg-red-500 border-red-500 text-white' :
+                                   'bg-amber-400 border-amber-400 text-amber-900';
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedScorecard(key)}
+                      className={`flex-1 px-4 py-3 text-sm font-medium rounded-lg border-2 transition-colors text-left ${
+                        selectedScorecard === key ? activeColor : baseColor
+                      }`}
+                    >
+                      <span className="block font-semibold">{classification} Viability</span>
+                      <span className="block text-xs mt-0.5 opacity-90">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Current Scorecard */}
+          <CurrentScorecard />
+
+          {/* Footer */}
+          <div className="max-w-3xl mx-auto mt-6 text-center">
+            <p className="text-xs text-slate-400">
+              Data shown is from simulated respondents for illustrative purposes. 
+              Full methodology available in the AIRAS whitepaper.
+            </p>
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
